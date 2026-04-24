@@ -22,6 +22,7 @@ const offerRoutes     = require('./routes/offer')
 const adminRoutes     = require('./routes/admin')
 
 const app    = express()
+app.set('trust proxy', 1) // Fix 1: trust proxy
 const PORT   = process.env.PORT ?? 4000
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -121,32 +122,22 @@ app.get('/ready', async (_req, res) => {
     allOk = false
   }
 
-  await new Promise((resolve) => {
-    const net      = require('net')
-    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
-    let host = 'localhost', port = 6379
-    try {
-      const u = new URL(redisUrl)
-      host = u.hostname || 'localhost'
-      port = u.port ? parseInt(u.port, 10) : 6379
-    } catch (_) {}
-
-    const socket    = new net.Socket()
-    let responded   = false
-    const done      = (ok, msg) => {
-      if (responded) return
-      responded = true
-      socket.destroy()
-      checks.redis = ok ? { ok: true } : { ok: false, error: msg }
-      if (!ok) allOk = false
-      resolve()
-    }
-    socket.setTimeout(3000)
-    socket.connect(port, host, () => socket.write('PING\r\n'))
-    socket.on('data',    (d) => done(d.toString().includes('PONG'), null))
-    socket.on('timeout', ()  => done(false, 'timeout'))
-    socket.on('error',   (e) => done(false, e.message))
-  })
+  // Fix 2: use ioredis instead of raw TCP socket
+  try {
+    const IORedis = require('ioredis')
+    const redisClient = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+      maxRetriesPerRequest: 1,
+      connectTimeout:       3000,
+      lazyConnect:          true,
+    })
+    await redisClient.connect()
+    await redisClient.ping()
+    await redisClient.quit()
+    checks.redis = { ok: true }
+  } catch (err) {
+    checks.redis = { ok: false, error: err.message }
+    allOk = false
+  }
 
   try {
     const resp = await calcClient.get('/health', { timeout: 5000 })
