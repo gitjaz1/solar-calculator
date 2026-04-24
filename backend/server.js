@@ -15,7 +15,7 @@ const { calcClient } = require('./services/calcClient')
 const { registerShutdown } = require('./services/shutdown')
 
 const { generalLimiter } = require('./middleware/rateLimit')
-const { adminAuth }      = require('./middleware/adminAuth') // Fix 4: import admin auth
+const { requireAdmin }   = require('./middleware/auth') // Fix 4: import admin auth
 
 const authRoutes      = require('./routes/auth')
 const calculateRoutes = require('./routes/calculate')
@@ -102,7 +102,7 @@ app.use('/admin',     adminRoutes)
 
 // ── Metrics ────────────────────────────────────────────────────────────
 // Fix 4: protect metrics behind admin auth so internals aren't publicly exposed
-app.get('/metrics', adminAuth, metricsHandler)
+app.get('/metrics', requireAdmin, metricsHandler)
 
 // ── Health ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({
