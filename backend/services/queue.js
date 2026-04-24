@@ -14,6 +14,27 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 
 fs.mkdirSync(PDF_DIR, { recursive: true })
 
+// ── Parse Redis URL ────────────────────────────────────────────────────
+function getRedisConfig() {
+  const url = new URL(REDIS_URL)
+  return {
+    host:     url.hostname,
+    port:     parseInt(url.port, 10) || 6379,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
+    username: url.username ? decodeURIComponent(url.username) : undefined,
+    tls:      url.protocol === 'rediss:' ? {} : undefined,
+    maxRetriesPerRequest:    null,
+    enableReadyCheck:        false,
+    enableOfflineQueue:      true,
+    retryStrategy: (times) => Math.min(times * 500, 5000),
+  }
+}
+
+logger.info('redis_connecting', {
+  host: new URL(REDIS_URL).hostname,
+  port: new URL(REDIS_URL).port,
+})
+
 // ── Download token ─────────────────────────────────────────────────────
 function signDownloadToken(offerRef) {
   const secret  = process.env.PDF_HMAC_SECRET
@@ -64,14 +85,11 @@ async function dbUpdateJob(jobId, fields) {
   const sets   = []
   const values = [String(jobId)]
   let   idx    = 2
-
   for (const [k, v] of Object.entries(fields)) {
     sets.push(`${k} = $${idx++}`)
     values.push(v)
   }
-
   if (!sets.length) return
-
   try {
     await db.query(
       `UPDATE jobs SET ${sets.join(', ')} WHERE id = $1`,
@@ -83,30 +101,20 @@ async function dbUpdateJob(jobId, fields) {
 }
 
 // ── Queue ──────────────────────────────────────────────────────────────
-const offerQueue = new Bull('offer-generation', REDIS_URL, {
+const offerQueue = new Bull('offer-generation', {
+  redis:              getRedisConfig(),
   defaultJobOptions: {
     attempts:         3,
     backoff:          { type: 'exponential', delay: 5000 },
     removeOnComplete: 100,
     removeOnFail:     50,
   },
-  redis: {
-    enableOfflineQueue:   false,
-    maxRetriesPerRequest: 3,
-  },
 })
 
-offerQueue.on('error', (err) => {
-  logger.error('queue_connection_error', { error: err.message, stack: err.stack })
-})
-
-offerQueue.client.on('error', (err) => {
-  logger.error('redis_client_error', { error: err.message })
-})
-
-offerQueue.client.on('connect', () => {
-  logger.info('redis_client_connected')
-})
+offerQueue.on('error',   (err) => logger.error('queue_error',   { error: err.message }))
+offerQueue.on('stalled', (job) => logger.warn('job_stalled',    { jobId: job.id }))
+offerQueue.on('ready',   ()    => logger.info('queue_ready'))
+offerQueue.on('failed',  (job, err) => logger.error('job_failed_event', { jobId: job.id, error: err.message }))
 
 // ── Worker ─────────────────────────────────────────────────────────────
 offerQueue.process(async (job) => {
@@ -119,7 +127,6 @@ offerQueue.process(async (job) => {
   logger.info('job_started', { jobId: job.id, offerRef, email: user.email })
 
   try {
-    // ── Step 1: Generate PDF via calc-engine ───────────────────────
     await dbUpdateJob(job.id, { status: 'active', progress: 10 })
     await job.progress(20)
 
@@ -131,7 +138,6 @@ offerQueue.process(async (job) => {
 
     await job.progress(60)
 
-    // ── Step 2: Save PDF to disk ───────────────────────────────────
     const pdfBuffer  = Buffer.from(pdfResponse.data)
     const filename   = `solar-offer-${offerRef}.pdf`
     const pdfPath    = path.join(PDF_DIR, filename)
@@ -142,7 +148,6 @@ offerQueue.process(async (job) => {
 
     logger.info('pdf_saved', { jobId: job.id, pdfPath, size: pdfBuffer.length })
 
-    // ── Step 3: Send email ─────────────────────────────────────────
     await dbUpdateJob(job.id, { status: 'active', progress: 75 })
     await job.progress(80)
 
@@ -160,21 +165,6 @@ offerQueue.process(async (job) => {
     }
 
     await job.progress(90)
-
-    // ── Step 4: Save offer record ──────────────────────────────────
-    if (userId) {
-      const projResult = await db.query(
-        'SELECT id FROM projects WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1',
-        [userId]
-      )
-      if (projResult.rows.length) {
-        await db.query(
-          `INSERT INTO offers (project_id, offer_ref, email_sent_to)
-           VALUES ($1, $2, $3)`,
-          [projResult.rows[0].id, offerRef, user.email]
-        )
-      }
-    }
 
     const durationMs = Date.now() - startMs
 
@@ -216,11 +206,6 @@ offerQueue.process(async (job) => {
 
     throw err
   }
-})
-
-// ── Queue event logging ────────────────────────────────────────────────
-offerQueue.on('stalled', (job) => {
-  logger.warn('job_stalled', { jobId: job.id })
 })
 
 module.exports = { offerQueue, signDownloadToken, verifyDownloadToken }

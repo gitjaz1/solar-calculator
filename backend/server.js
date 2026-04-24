@@ -1,178 +1,211 @@
-const path = require('path')
-const envFile = process.env.NODE_ENV === 'test' ? '../.env.test' : '../.env'
-require('dotenv').config({ path: path.resolve(__dirname, envFile), override: false })
+const Bull   = require('bull')
+const crypto = require('crypto')
+const fs     = require('fs')
+const path   = require('path')
 
-require('./services/validateEnv')()
+const { calcClient } = require('./calcClient')
+const email          = require('./email')
+const db             = require('./db')
+const logger         = require('./logger')
+const { recordJob }  = require('./metrics')
 
-const express  = require('express')
-const cors     = require('cors')
-const helmet   = require('helmet')
+const PDF_DIR   = process.env.PDF_DIR   ?? path.join(__dirname, '../../pdfs')
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 
-const logger     = require('./services/logger')
-const db         = require('./services/db')
-const { metricsMiddleware, metricsHandler } = require('./services/metrics')
-const { calcClient } = require('./services/calcClient')
-const { registerShutdown } = require('./services/shutdown')
+fs.mkdirSync(PDF_DIR, { recursive: true })
 
-const { generalLimiter } = require('./middleware/rateLimit')
-
-const authRoutes      = require('./routes/auth')
-const calculateRoutes = require('./routes/calculate')
-const offerRoutes     = require('./routes/offer')
-const adminRoutes     = require('./routes/admin')
-
-const app    = express()
-app.set('trust proxy', 1) // Fix 1: trust proxy
-const PORT   = process.env.PORT ?? 4000
-const isProd = process.env.NODE_ENV === 'production'
-
-// ── Security headers ───────────────────────────────────────────────────
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc:     ["'self'"],
-      scriptSrc:      ["'self'"],
-      styleSrc:       ["'self'", "'unsafe-inline'"],
-      imgSrc:         ["'self'", 'data:'],
-      connectSrc:     ["'self'"],
-      fontSrc:        ["'self'"],
-      objectSrc:      ["'none'"],
-      frameAncestors: ["'none'"],
-    },
-  },
-  hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
-  crossOriginEmbedderPolicy: false,
-}))
-
-// ── CORS ───────────────────────────────────────────────────────────────
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:3000']
-
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true)
-    if (!isProd || allowedOrigins.includes(origin)) return cb(null, true)
-    cb(new Error(`CORS: origin ${origin} not allowed`))
-  },
-  credentials: true,
-  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret'],
-}))
-
-// ── Body parsing ───────────────────────────────────────────────────────
-app.use(express.json({ limit: '2mb' }))
-app.use(express.urlencoded({ extended: false, limit: '2mb' }))
-
-
-// ── Logging + metrics ──────────────────────────────────────────────────
-app.use(logger.httpMiddleware())
-app.use(metricsMiddleware)
-
-// ── Rate limiting ──────────────────────────────────────────────────────
-app.use(generalLimiter)
-
-// ── Input sanitisation ─────────────────────────────────────────────────
-app.use((req, _res, next) => {
-  function clean(obj) {
-    if (typeof obj === 'string') {
-      return obj
-        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-        .replace(/javascript\s*:/gi, '')
-        .replace(/on\w+\s*=/gi, '')
-    }
-    if (Array.isArray(obj)) return obj.map(clean)
-    if (obj && typeof obj === 'object') {
-      return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, clean(v)]))
-    }
-    return obj
+// ── Parse Redis URL ────────────────────────────────────────────────────
+function getRedisConfig() {
+  const url = new URL(REDIS_URL)
+  return {
+    host:     url.hostname,
+    port:     parseInt(url.port, 10) || 6379,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
+    username: url.username ? decodeURIComponent(url.username) : undefined,
+    tls:      url.protocol === 'rediss:' ? {} : undefined,
+    maxRetriesPerRequest:    null,
+    enableReadyCheck:        false,
+    enableOfflineQueue:      true,
+    retryStrategy: (times) => Math.min(times * 500, 5000),
   }
-  req.query  = clean(req.query)
-  req.params = clean(req.params)
-  next()
-})
-
-// ── Routes ─────────────────────────────────────────────────────────────
-app.use('/auth',      authRoutes)
-app.use('/calculate', calculateRoutes)
-app.use('/offer',     offerRoutes)
-app.use('/admin',     adminRoutes)
-
-// ── Metrics ────────────────────────────────────────────────────────────
-app.get('/metrics', metricsHandler)
-
-// ── Health ─────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({
-  status: 'ok',
-  ts:     new Date(),
-  env:    process.env.NODE_ENV,
-  calc:   calcClient.circuitBreakerStatus(),
-}))
-
-// ── Readiness ──────────────────────────────────────────────────────────
-app.get('/ready', async (_req, res) => {
-  const checks = {}
-  let allOk    = true
-
-  try {
-    await db.pool.query('SELECT 1')
-    checks.postgres = { ok: true }
-  } catch (err) {
-    checks.postgres = { ok: false, error: err.message }
-    allOk = false
-  }
-
-  // Fix 2: use ioredis instead of raw TCP socket
-  try {
-    const IORedis = require('ioredis')
-    const redisClient = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-      maxRetriesPerRequest: 1,
-      connectTimeout:       3000,
-      lazyConnect:          true,
-    })
-    await redisClient.connect()
-    await redisClient.ping()
-    await redisClient.quit()
-    checks.redis = { ok: true }
-  } catch (err) {
-    checks.redis = { ok: false, error: err.message }
-    allOk = false
-  }
-
-  try {
-    const resp = await calcClient.get('/health', { timeout: 5000 })
-    checks.calcEngine = { ok: true, status: resp.data?.status }
-  } catch (err) {
-    checks.calcEngine = { ok: false, error: err.message }
-    allOk = false
-  }
-
-  res.status(allOk ? 200 : 503).json({
-    status: allOk ? 'ready' : 'degraded',
-    ts:     new Date(),
-    checks,
-  })
-})
-
-// ── 404 ────────────────────────────────────────────────────────────────
-app.use((_req, res) => res.status(404).json({ message: 'Not found' }))
-
-// ── Global error handler ───────────────────────────────────────────────
-app.use((err, _req, res, _next) => {
-  const status  = err.status ?? err.statusCode ?? 500
-  const message = isProd && status === 500
-    ? 'Internal server error'
-    : (err.message ?? 'Internal error')
-  if (status >= 500) logger.error('server_error', { error: err.message, stack: err.stack })
-  res.status(status).json({ message })
-})
-
-// ── Start ──────────────────────────────────────────────────────────────
-if (require.main === module) {
-  const httpServer = app.listen(PORT, () =>
-    logger.info('server_started', { port: PORT, env: process.env.NODE_ENV })
-  )
-  registerShutdown(httpServer)
 }
 
-module.exports = app
+logger.info('redis_connecting', {
+  host: new URL(REDIS_URL).hostname,
+  port: new URL(REDIS_URL).port,
+})
+
+// ── Download token ─────────────────────────────────────────────────────
+function signDownloadToken(offerRef) {
+  const secret  = process.env.PDF_HMAC_SECRET
+  const expires = Date.now() + 2 * 60 * 60 * 1000
+  const payload = `${offerRef}:${expires}`
+  const sig     = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex')
+    .slice(0, 32)
+  return `${sig}.${expires}`
+}
+
+function verifyDownloadToken(offerRef, token) {
+  try {
+    const [sig, expires] = token.split('.')
+    if (Date.now() > parseInt(expires, 10)) return false
+    const secret  = process.env.PDF_HMAC_SECRET
+    const payload = `${offerRef}:${expires}`
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex')
+      .slice(0, 32)
+    return crypto.timingSafeEqual(
+      Buffer.from(sig),
+      Buffer.from(expected)
+    )
+  } catch { return false }
+}
+
+// ── DB helpers ─────────────────────────────────────────────────────────
+async function dbInsertJob(jobId, meta) {
+  try {
+    await db.query(
+      `INSERT INTO jobs
+         (id, queue, status, progress, payload_meta, user_email, queued_at)
+       VALUES ($1, 'offer-generation', 'queued', 0, $2, $3, NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [String(jobId), JSON.stringify(meta), meta.userEmail ?? null]
+    )
+  } catch (err) {
+    logger.warn('db_job_insert_failed', { jobId, error: err.message })
+  }
+}
+
+async function dbUpdateJob(jobId, fields) {
+  const sets   = []
+  const values = [String(jobId)]
+  let   idx    = 2
+  for (const [k, v] of Object.entries(fields)) {
+    sets.push(`${k} = $${idx++}`)
+    values.push(v)
+  }
+  if (!sets.length) return
+  try {
+    await db.query(
+      `UPDATE jobs SET ${sets.join(', ')} WHERE id = $1`,
+      values
+    )
+  } catch (err) {
+    logger.warn('db_job_update_failed', { jobId, error: err.message })
+  }
+}
+
+// ── Queue ──────────────────────────────────────────────────────────────
+const offerQueue = new Bull('offer-generation', {
+  redis:              getRedisConfig(),
+  defaultJobOptions: {
+    attempts:         3,
+    backoff:          { type: 'exponential', delay: 5000 },
+    removeOnComplete: 100,
+    removeOnFail:     50,
+  },
+})
+
+offerQueue.on('error',   (err) => logger.error('queue_error',   { error: err.message }))
+offerQueue.on('stalled', (job) => logger.warn('job_stalled',    { jobId: job.id }))
+offerQueue.on('ready',   ()    => logger.info('queue_ready'))
+offerQueue.on('failed',  (job, err) => logger.error('job_failed_event', { jobId: job.id, error: err.message }))
+
+// ── Worker ─────────────────────────────────────────────────────────────
+offerQueue.process(async (job) => {
+  const { offerRef, user, project, zones, calcResult, userId } = job.data
+  const startMs = Date.now()
+
+  await dbInsertJob(job.id, { userEmail: user.email, offerRef })
+  await job.progress(10)
+
+  logger.info('job_started', { jobId: job.id, offerRef, email: user.email })
+
+  try {
+    await dbUpdateJob(job.id, { status: 'active', progress: 10 })
+    await job.progress(20)
+
+    const pdfResponse = await calcClient.post(
+      '/pdf/generate',
+      { offerRef, user, project, zones, calcResult },
+      { timeout: 120000, responseType: 'arraybuffer' }
+    )
+
+    await job.progress(60)
+
+    const pdfBuffer  = Buffer.from(pdfResponse.data)
+    const filename   = `solar-offer-${offerRef}.pdf`
+    const pdfPath    = path.join(PDF_DIR, filename)
+
+    fs.writeFileSync(pdfPath, pdfBuffer)
+    await dbUpdateJob(job.id, { pdf_path: pdfPath, offer_ref: offerRef })
+    await job.progress(70)
+
+    logger.info('pdf_saved', { jobId: job.id, pdfPath, size: pdfBuffer.length })
+
+    await dbUpdateJob(job.id, { status: 'active', progress: 75 })
+    await job.progress(80)
+
+    const emailResult = await email.sendOffer({
+      to:          user.email,
+      contactName: user.contactName,
+      companyName: user.companyName,
+      projectName: project.name,
+      pdfBuffer,
+      filename,
+    })
+
+    if (emailResult.skipped) {
+      logger.warn('email_skipped_no_smtp', { jobId: job.id })
+    }
+
+    await job.progress(90)
+
+    const durationMs = Date.now() - startMs
+
+    await dbUpdateJob(job.id, {
+      status:       'completed',
+      progress:     100,
+      duration_ms:  durationMs,
+      completed_at: new Date().toISOString(),
+    })
+
+    recordJob('completed', durationMs)
+
+    logger.info('job_completed', {
+      jobId:       job.id,
+      offerRef,
+      duration_ms: durationMs,
+      emailSent:   !emailResult.skipped,
+    })
+
+    return { offerRef, filename, emailSent: !emailResult.skipped }
+
+  } catch (err) {
+    const durationMs = Date.now() - startMs
+
+    await dbUpdateJob(job.id, {
+      status:        'failed',
+      error_message: err.message,
+      duration_ms:   durationMs,
+    })
+
+    recordJob('failed', durationMs)
+
+    logger.error('job_failed', {
+      jobId:       job.id,
+      offerRef,
+      error:       err.message,
+      duration_ms: durationMs,
+    })
+
+    throw err
+  }
+})
+
+module.exports = { offerQueue, signDownloadToken, verifyDownloadToken }
