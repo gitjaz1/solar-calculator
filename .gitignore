@@ -1,0 +1,33 @@
+# Environment variables — never commit these
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+calc-engine/__pycache__/
+calc-engine/**/__pycache__/
+
+# PDFs generated at runtime
+pdfs/
+
+# Pricing overrides (contains business data)
+config/pricing_overrides.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Vite build output
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*

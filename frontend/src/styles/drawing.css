@@ -1,0 +1,192 @@
+/* ── Zone tabs ──────────────────────────────────────────────────────────── */
+.zone-tabs {
+  display:   flex;
+  gap:       8px;
+  margin-bottom: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.zone-tab-add {
+  font-size:      12px;
+  color:          var(--orange);
+  border:         1.5px dashed var(--orange);
+  background:     transparent;
+  padding:        7px 16px;
+  border-radius:  var(--radius);
+  cursor:         pointer;
+  font-family:    var(--font-head);
+  font-weight:    700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition:     background 0.15s;
+}
+
+.zone-tab-add:hover {
+  background: var(--orange-lt);
+}
+
+/* ── Grid toolbar ───────────────────────────────────────────────────────── */
+.grid-toolbar {
+  display:     flex;
+  gap:         8px;
+  margin-bottom: 12px;
+  flex-wrap:   wrap;
+  align-items: center;
+}
+
+.grid-axis-control {
+  display:     flex;
+  gap:         4px;
+  align-items: center;
+}
+
+.grid-axis-label {
+  font-size:      11px;
+  color:          var(--grey-6);
+  margin-right:   4px;
+  font-weight:    600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.grid-axis-count {
+  font-size:  13px;
+  font-weight: 700;
+  min-width:  24px;
+  text-align: center;
+}
+
+.grid-btn {
+  width:       26px;
+  height:      26px;
+  border:      1.5px solid var(--grey-3);
+  border-radius: 4px;
+  background:  var(--white);
+  font-size:   16px;
+  line-height: 1;
+  cursor:      pointer;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  transition:  border-color 0.15s, color 0.15s;
+}
+
+.grid-btn:hover:not(:disabled) {
+  border-color: var(--orange);
+  color:        var(--orange);
+}
+
+.grid-btn:disabled {
+  opacity: 0.3;
+  cursor:  not-allowed;
+}
+
+.grid-stats {
+  margin-left: auto;
+  font-size:   12px;
+  color:       var(--grey-6);
+}
+
+/* ── Grid scroll wrapper ────────────────────────────────────────────────── */
+.grid-scroll-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  max-width: 100%;
+}
+
+/* ── Grid canvas ────────────────────────────────────────────────────────── */
+.grid-canvas {
+  user-select:  none;
+  cursor:       crosshair;
+  display:      grid;
+  gap:          3px;
+  width:        fit-content;
+}
+
+.grid-cell {
+  width:        36px;
+  height:       36px;
+  border-radius: 4px;
+  display:      flex;
+  align-items:  center;
+  justify-content: center;
+  transition:   background 0.05s, border-color 0.05s;
+  flex-shrink:  0;
+}
+
+.grid-cell--active {
+  background: rgba(232, 82, 26, 0.13);
+  border:     2px solid var(--orange);
+}
+
+.grid-cell--empty {
+  background: var(--grey-1);
+  border:     2px solid var(--grey-3);
+}
+
+.grid-cell--drag-add {
+  background:   var(--orange) !important;
+  border-color: var(--orange) !important;
+}
+
+.grid-cell--drag-remove {
+  background:   #ccc !important;
+  border-color: var(--grey-3) !important;
+}
+
+/* ── Grid legend ────────────────────────────────────────────────────────── */
+.grid-legend {
+  margin-top:    16px;
+  padding:       12px 16px;
+  background:    var(--grey-1);
+  border-radius: var(--radius);
+  font-size:     12px;
+  display:       flex;
+  gap:           20px;
+  flex-wrap:     wrap;
+}
+
+.grid-legend-item {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  color:       var(--grey-6);
+}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .zone-tabs {
+    overflow-x: auto;
+    flex-wrap:  nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .zone-tabs::-webkit-scrollbar { display: none; }
+
+  .grid-cell {
+    width:         28px;
+    height:        28px;
+    border-radius: 3px;
+  }
+
+  .grid-legend {
+    flex-direction: column;
+    gap:            8px;
+  }
+
+  .grid-axis-label { display: none; }
+
+  .grid-stats {
+    font-size:   11px;
+    width:       100%;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .grid-cell { width: 24px; height: 24px; }
+}

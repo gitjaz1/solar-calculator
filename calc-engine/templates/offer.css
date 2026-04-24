@@ -1,0 +1,202 @@
+@page {
+  size: A4;
+  margin: 20mm 15mm 20mm 15mm;
+  @top-right {
+    content: "Solar Park Calculator";
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    color: #888888;
+  }
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    color: #888888;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Arial, sans-serif;
+  font-size:   10pt;
+  color:       #1a1a1a;
+  line-height: 1.5;
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+.header {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     flex-start;
+  margin-bottom:   24pt;
+  padding-bottom:  12pt;
+  border-bottom:   2pt solid #e8521a;
+}
+
+.header-left h1 {
+  font-size:      20pt;
+  font-weight:    700;
+  color:          #e8521a;
+  letter-spacing: 1px;
+  margin-bottom:  3pt;
+  font-family:    Arial, sans-serif;
+}
+
+.header-left p {
+  font-size: 9pt;
+  color:     #888888;
+}
+
+.header-right {
+  text-align:  right;
+  font-size:   9pt;
+  color:       #555555;
+  line-height: 1.8;
+}
+
+.header-right strong {
+  color: #1a1a1a;
+}
+
+/* ── Sections ────────────────────────────────────────────────── */
+.section       { margin-bottom: 20pt; }
+
+.section-title {
+  font-size:      11pt;
+  font-weight:    700;
+  color:          #0f0f0f;
+  margin-bottom:  8pt;
+  padding-bottom: 4pt;
+  border-bottom:  1pt solid #eeeeee;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family:    Arial, sans-serif;
+}
+
+/* ── Info grid ───────────────────────────────────────────────── */
+.info-grid {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   8pt;
+  margin-bottom:         12pt;
+}
+
+.info-block {
+  background:    #fafafa;
+  border:        1pt solid #eeeeee;
+  border-radius: 4pt;
+  padding:       8pt 10pt;
+}
+
+.info-block .label {
+  font-size:      8pt;
+  color:          #888888;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+  margin-bottom:  2pt;
+}
+
+.info-block .value {
+  font-size:   10pt;
+  font-weight: 600;
+  color:       #1a1a1a;
+}
+
+/* ── Tables ──────────────────────────────────────────────────── */
+table {
+  width:           100%;
+  border-collapse: collapse;
+  font-size:       9.5pt;
+}
+
+thead tr {
+  background: #0f0f0f;
+  color:      #ffffff;
+}
+
+thead th {
+  padding:    6pt 8pt;
+  text-align: left;
+  font-weight: 700;
+  font-size:  9pt;
+}
+
+thead th.right { text-align: right; }
+
+tbody tr:nth-child(even) { background: #fafafa; }
+tbody tr:nth-child(odd)  { background: #ffffff; }
+
+tbody td {
+  padding:       5pt 8pt;
+  border-bottom: 0.5pt solid #eeeeee;
+}
+
+tbody td.right { text-align: right; }
+
+/* ── Totals table ────────────────────────────────────────────── */
+.totals-table            { width: 280pt; margin-left: auto; margin-top: 8pt; }
+.totals-table td         { padding: 4pt 8pt; font-size: 10pt; }
+.totals-table .discount-row td { color: #2e7d32; }
+.totals-table .total-row td {
+  font-weight:  700;
+  font-size:    11pt;
+  color:        #e8521a;
+  border-top:   1.5pt solid #e8521a;
+  padding-top:  6pt;
+}
+
+/* ── Logistics cards ─────────────────────────────────────────── */
+.logistics-grid {
+  display:               grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:                   8pt;
+  margin-bottom:         12pt;
+}
+
+.logistics-card {
+  background:    #fafafa;
+  border:        1pt solid #eeeeee;
+  border-radius: 4pt;
+  padding:       8pt 10pt;
+  text-align:    center;
+}
+
+.logistics-card .number {
+  font-size:   18pt;
+  font-weight: 700;
+  color:       #e8521a;
+  line-height: 1.2;
+}
+
+.logistics-card .label {
+  font-size:      8pt;
+  color:          #888888;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+  margin-top:     2pt;
+}
+
+/* ── Zone sections ───────────────────────────────────────────── */
+.zone-section      { margin-bottom: 16pt; page-break-inside: avoid; }
+
+.zone-title {
+  font-size:     10pt;
+  font-weight:   700;
+  color:         #555555;
+  margin-bottom: 6pt;
+}
+
+/* ── Ballast SVG cells — orange scale matching app ───────────── */
+.zone-svg { margin-top: 4pt; }
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.footer {
+  margin-top:   24pt;
+  padding-top:  10pt;
+  border-top:   1pt solid #eeeeee;
+  font-size:    8pt;
+  color:        #aaaaaa;
+  text-align:   center;
+  line-height:  1.6;
+}

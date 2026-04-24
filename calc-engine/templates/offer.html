@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="stylesheet" href="offer.css"/>
+  <title>Solar Park Offer — {{ offer_ref }}</title>
+</head>
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Solar Park Offer</h1>
+      <p>Ballast Calculation &amp; Bill of Materials</p>
+    </div>
+    <div class="header-right">
+      <strong>Offer ref:</strong> {{ offer_ref }}<br/>
+      <strong>Date:</strong> {{ generated }}<br/>
+      <strong>Prepared for:</strong> {{ user.companyName }}<br/>
+      <strong>Contact:</strong> {{ user.contactName }}<br/>
+      <strong>Email:</strong> {{ user.email }}
+    </div>
+  </div>
+
+  <!-- ── Project details ─────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">Project Details</div>
+    <div class="info-grid">
+      <div class="info-block">
+        <div class="label">Project name</div>
+        <div class="value">{{ project.name }}</div>
+      </div>
+      {% if project.reference %}
+      <div class="info-block">
+        <div class="label">Reference</div>
+        <div class="value">{{ project.reference }}</div>
+      </div>
+      {% endif %}
+      <div class="info-block">
+        <div class="label">Country</div>
+        <div class="value">{{ project.country }}</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Consequence class</div>
+        <div class="value">{{ project.consequenceClass }}</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Basic wind velocity</div>
+        <div class="value">{{ project.basicWindVelocity }} m/s</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Terrain category</div>
+        <div class="value">{{ project.terrainCategory }}</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Panel thickness</div>
+        <div class="value">{{ project.panelThickness }} mm</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Tile thickness</div>
+        <div class="value">{{ project.tileThickness }} mm</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Design working life</div>
+        <div class="value">{{ project.designWorkingLife }}</div>
+      </div>
+      <div class="info-block">
+        <div class="label">Panel length</div>
+        <div class="value">{{ project.panelLength }} mm</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Logistics summary ───────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">Logistics Summary</div>
+    <div class="logistics-grid">
+      <div class="logistics-card">
+        <div class="number">{{ calc.total_shelters }}</div>
+        <div class="label">Shelters</div>
+      </div>
+      <div class="logistics-card">
+        <div class="number">{{ calc.total_tiles }}</div>
+        <div class="label">Ballast tiles</div>
+      </div>
+      <div class="logistics-card">
+        <div class="number">
+          {{ calc.total_ballast_weight_kg | int | string }}
+        </div>
+        <div class="label">Total weight (kg)</div>
+      </div>
+      <div class="logistics-card">
+        <div class="number">{{ calc.approx_trucks }}</div>
+        <div class="label">Approx. trucks</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bill of materials ───────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">Bill of Materials</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Article</th>
+          <th>Description</th>
+          <th class="right">Qty</th>
+          <th>Unit</th>
+          <th class="right">Unit price</th>
+          <th class="right">Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in bom_rows %}
+        <tr>
+          <td>{{ row.article }}</td>
+          <td>{{ row.description }}</td>
+          <td class="right">{{ row.qty }}</td>
+          <td>{{ row.unit }}</td>
+          <td class="right">€ {{ "%.2f"|format(row.unit_price) }}</td>
+          <td class="right">€ {{ "%.2f"|format(row.line_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="totals-table">
+      <tbody>
+        <tr>
+          <td>Subtotal</td>
+          <td class="right">€ {{ "%.2f"|format(subtotal) }}</td>
+        </tr>
+        {% if discount_pct > 0 %}
+        <tr class="discount-row">
+          <td>Discount ({{ discount_pct }}%)</td>
+          <td class="right">− € {{ "%.2f"|format(discount_amount) }}</td>
+        </tr>
+        {% endif %}
+        <tr class="total-row">
+          <td>Total</td>
+          <td class="right">€ {{ "%.2f"|format(total_price) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Ballast plans per zone ──────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">Ballast Plans</div>
+    {% for zone in zones %}
+    <div class="zone-section">
+      <div class="zone-title">
+        {{ zone.label }} —
+        {{ zone.shelters }} shelters ·
+        {{ zone.tiles_total }} tiles ·
+        {{ zone.ballast_weight_kg }} kg
+      </div>
+      <div class="zone-svg">
+        {{ zone.svg | safe }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <div class="footer">
+    This offer was generated automatically by the Solar Park Calculator.<br/>
+    Prices are indicative and subject to confirmation.<br/>
+    Offer ref: {{ offer_ref }} · Generated: {{ generated }}
+  </div>
+
+</body>
+</html>
