@@ -90,6 +90,22 @@ const offerQueue = new Bull('offer-generation', REDIS_URL, {
     removeOnComplete: 100,
     removeOnFail:     50,
   },
+  redis: {
+    enableOfflineQueue:   false,
+    maxRetriesPerRequest: 3,
+  },
+})
+
+offerQueue.on('error', (err) => {
+  logger.error('queue_connection_error', { error: err.message, stack: err.stack })
+})
+
+offerQueue.client.on('error', (err) => {
+  logger.error('redis_client_error', { error: err.message })
+})
+
+offerQueue.client.on('connect', () => {
+  logger.info('redis_client_connected')
 })
 
 // ── Worker ─────────────────────────────────────────────────────────────
@@ -205,10 +221,6 @@ offerQueue.process(async (job) => {
 // ── Queue event logging ────────────────────────────────────────────────
 offerQueue.on('stalled', (job) => {
   logger.warn('job_stalled', { jobId: job.id })
-})
-
-offerQueue.on('error', (err) => {
-  logger.error('queue_error', { error: err.message })
 })
 
 module.exports = { offerQueue, signDownloadToken, verifyDownloadToken }
