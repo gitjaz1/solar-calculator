@@ -14,7 +14,6 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 
 fs.mkdirSync(PDF_DIR, { recursive: true })
 
-// ── Parse Redis URL ────────────────────────────────────────────────────
 function getRedisConfig() {
   const url = new URL(REDIS_URL)
   return {
@@ -35,7 +34,6 @@ logger.info('redis_connecting', {
   port: new URL(REDIS_URL).port,
 })
 
-// ── Download token ─────────────────────────────────────────────────────
 function signDownloadToken(offerRef) {
   const secret  = process.env.PDF_HMAC_SECRET
   const expires = Date.now() + 2 * 60 * 60 * 1000
@@ -66,7 +64,6 @@ function verifyDownloadToken(offerRef, token) {
   } catch { return false }
 }
 
-// ── DB helpers ─────────────────────────────────────────────────────────
 async function dbInsertJob(jobId, meta) {
   try {
     await db.query(
@@ -100,9 +97,8 @@ async function dbUpdateJob(jobId, fields) {
   }
 }
 
-// ── Queue ──────────────────────────────────────────────────────────────
 const offerQueue = new Bull('offer-generation', {
-  redis:              getRedisConfig(),
+  redis:             getRedisConfig(),
   defaultJobOptions: {
     attempts:         3,
     backoff:          { type: 'exponential', delay: 5000 },
@@ -111,12 +107,11 @@ const offerQueue = new Bull('offer-generation', {
   },
 })
 
-offerQueue.on('error',   (err) => logger.error('queue_error',   { error: err.message }))
-offerQueue.on('stalled', (job) => logger.warn('job_stalled',    { jobId: job.id }))
+offerQueue.on('error',   (err) => logger.error('queue_error',      { error: err.message }))
+offerQueue.on('stalled', (job) => logger.warn('job_stalled',       { jobId: job.id }))
 offerQueue.on('ready',   ()    => logger.info('queue_ready'))
 offerQueue.on('failed',  (job, err) => logger.error('job_failed_event', { jobId: job.id, error: err.message }))
 
-// ── Worker ─────────────────────────────────────────────────────────────
 offerQueue.process(async (job) => {
   const { offerRef, user, project, zones, calcResult, userId } = job.data
   const startMs = Date.now()
@@ -138,9 +133,9 @@ offerQueue.process(async (job) => {
 
     await job.progress(60)
 
-    const pdfBuffer  = Buffer.from(pdfResponse.data)
-    const filename   = `solar-offer-${offerRef}.pdf`
-    const pdfPath    = path.join(PDF_DIR, filename)
+    const pdfBuffer = Buffer.from(pdfResponse.data)
+    const filename  = `solar-offer-${offerRef}.pdf`
+    const pdfPath   = path.join(PDF_DIR, filename)
 
     fs.writeFileSync(pdfPath, pdfBuffer)
     await dbUpdateJob(job.id, { pdf_path: pdfPath, offer_ref: offerRef })
@@ -151,17 +146,22 @@ offerQueue.process(async (job) => {
     await dbUpdateJob(job.id, { status: 'active', progress: 75 })
     await job.progress(80)
 
-    const emailResult = await email.sendOffer({
-      to:          user.email,
-      contactName: user.contactName,
-      companyName: user.companyName,
-      projectName: project.name,
-      pdfBuffer,
-      filename,
-    })
-
-    if (emailResult.skipped) {
-      logger.warn('email_skipped_no_smtp', { jobId: job.id })
+    // ── Email (non-fatal) ──────────────────────────────────────────────
+    let emailResult = { skipped: true }
+    try {
+      emailResult = await email.sendOffer({
+        to:          user.email,
+        contactName: user.contactName,
+        companyName: user.companyName,
+        projectName: project.name,
+        pdfBuffer,
+        filename,
+      })
+    } catch (emailErr) {
+      logger.warn('email_failed_non_fatal', {
+        jobId: job.id,
+        error: emailErr.message,
+      })
     }
 
     await job.progress(90)

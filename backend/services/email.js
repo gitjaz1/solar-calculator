@@ -3,29 +3,28 @@ const logger     = require('./logger')
 
 function createTransport() {
   const host = (process.env.SMTP_HOST ?? '').trim().replace(/^["']|["']$/g, '')
-const user = (process.env.SMTP_USER ?? '').trim().replace(/^["']|["']$/g, '')
-const pass = (process.env.SMTP_PASS ?? '').trim().replace(/^["']|["']$/g, '')
+  const user = (process.env.SMTP_USER ?? '').trim().replace(/^["']|["']$/g, '')
+  const pass = (process.env.SMTP_PASS ?? '').trim().replace(/^["']|["']$/g, '')
 
-if (!host || !user || !pass || host === 'smtp.yourprovider.com') {
-  return null
-}
+  if (!host || !user || !pass || host === 'smtp.yourprovider.com') {
+    return null
+  }
 
-return nodemailer.createTransport({
-  host,
-  port:   parseInt(process.env.SMTP_PORT ?? '587', 10),
-  secure: process.env.SMTP_PORT === '465',
-  auth:   { user, pass },
-})
+  return nodemailer.createTransport({
+    host,
+    port:              parseInt(process.env.SMTP_PORT ?? '587', 10),
+    secure:            process.env.SMTP_PORT === '465',
+    auth:              { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout:   10000,
+    socketTimeout:     10000,
+  })
 }
 
 async function sendOffer({ to, contactName, companyName, projectName, pdfBuffer, filename }) {
   const transport = createTransport()
-
   if (!transport) {
-    logger.warn('email_skipped', {
-      reason: 'SMTP not configured',
-      to,
-    })
+    logger.warn('email_skipped', { reason: 'SMTP not configured', to })
     return { skipped: true }
   }
 
@@ -57,13 +56,7 @@ async function sendOffer({ to, contactName, companyName, projectName, pdfBuffer,
     to,
     subject:     `Solar Park Offer — ${projectName}`,
     html,
-    attachments: [
-      {
-        filename,
-        content:     pdfBuffer,
-        contentType: 'application/pdf',
-      },
-    ],
+    attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
   }
 
   try {
