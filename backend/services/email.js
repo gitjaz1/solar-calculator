@@ -10,19 +10,22 @@ function createTransport() {
     return null
   }
 
+  const port = parseInt(process.env.SMTP_PORT ?? '587', 10)
+
   return nodemailer.createTransport({
     host,
-    port:              parseInt(process.env.SMTP_PORT ?? '587', 10),
-    secure:            process.env.SMTP_PORT === '465',
-    auth:              { user, pass },
+    port,
+    secure: port === 465, // 587 → false, 465 → true
+    auth: { user, pass },
     connectionTimeout: 10000,
-    greetingTimeout:   10000,
-    socketTimeout:     10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   })
 }
 
 async function sendOffer({ to, contactName, companyName, projectName, pdfBuffer, filename }) {
   const transport = createTransport()
+
   if (!transport) {
     logger.warn('email_skipped', { reason: 'SMTP not configured', to })
     return { skipped: true }
@@ -52,11 +55,17 @@ async function sendOffer({ to, contactName, companyName, projectName, pdfBuffer,
   `
 
   const mailOptions = {
-    from:        `"Solar Calculator" <${process.env.SALES_EMAIL}>`,
+    from: `"Solar Calculator" <${salesEmail}>`,
     to,
-    subject:     `Solar Park Offer — ${projectName}`,
+    subject: `Solar Park Offer — ${projectName}`,
     html,
-    attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
+    attachments: [
+      {
+        filename,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }
+    ],
   }
 
   try {
@@ -66,15 +75,23 @@ async function sendOffer({ to, contactName, companyName, projectName, pdfBuffer,
     if (salesEmail && salesEmail !== to) {
       await transport.sendMail({
         ...mailOptions,
-        to:      salesEmail,
+        to: salesEmail,
         subject: `[COPY] Solar Park Offer — ${projectName} — ${companyName}`,
       })
       logger.info('email_copy_sent', { to: salesEmail })
     }
 
     return { sent: true }
+
   } catch (err) {
-    logger.error('email_failed', { error: err.message, to })
+    logger.error('email_failed', {
+      message: err.message,
+      code: err.code,
+      response: err.response,
+      responseCode: err.responseCode,
+      command: err.command,
+      to
+    })
     throw err
   }
 }
@@ -102,15 +119,24 @@ async function sendResetPassword({ to, resetUrl }) {
 
   try {
     await transport.sendMail({
-      from:    `"Solar Calculator" <${process.env.SALES_EMAIL}>`,
+      from: `"Solar Calculator" <${process.env.SALES_EMAIL}>`,
       to,
       subject: 'Reset your Solar Calculator password',
       html,
     })
+
     logger.info('reset_email_sent', { to })
     return { sent: true }
+
   } catch (err) {
-    logger.error('reset_email_failed', { error: err.message })
+    logger.error('reset_email_failed', {
+      message: err.message,
+      code: err.code,
+      response: err.response,
+      responseCode: err.responseCode,
+      command: err.command,
+      to
+    })
     throw err
   }
 }
