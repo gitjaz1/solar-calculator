@@ -364,3 +364,34 @@ h1, h2, h3, h4 {
     padding: 14px 12px;
   }
 }
+/* ── Three column field row ───────────────────────────────────────── */
+.field-row-3 {
+  display:               grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:                   16px;
+}
+
+@media (max-width: 767px) {
+  .field-row-3 {
+    grid-template-columns: 1fr;
+    gap:                   0;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+    gap:                   0;
+  }
+}
+
+@media (max-width: 480px) {
+  .field .hint {
+    white-space: normal;
+    word-break:  break-word;
+    font-size:   11px;
+  }
+
+  .field input,
+  .field select {
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+  }
+} 

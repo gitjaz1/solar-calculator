@@ -82,8 +82,8 @@ export default function ProjectSetupPage() {
               </div>
             </div>
 
-            <div className="field-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-              <div className="field">
+              <div className="field-row field-row-3">
+                <div className="field">
                 <label>
                   {t('setup.country')}
                   <span className="req"> *</span>
